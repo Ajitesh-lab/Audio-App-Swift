@@ -460,6 +460,8 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
       console.log(`⬇️  Downloading via RapidAPI to ${outPath}`);
       try {
         // Get audio URL from RapidAPI
+        console.log(`🔑 Using RapidAPI: ${RAPIDAPI_HOST}`);
+        console.log(`📍 Request URL: https://${RAPIDAPI_HOST}/dl?id=${videoId}`);
         const response = await axios.get(`https://${RAPIDAPI_HOST}/dl`, {
           params: { id: videoId },
           headers: {
@@ -468,6 +470,8 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
           },
           timeout: 15000
         });
+        console.log(`✅ RapidAPI response status: ${response.status}`);
+        console.log(`📦 RapidAPI response data:`, JSON.stringify(response.data).substring(0, 200));
 
         const audioUrl = response.data.link;
         if (!audioUrl) {
@@ -494,8 +498,16 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
         console.log(`✅ Download complete: ${outPath}`);
         audioPath = outPath;
       } catch (downloadError) {
-        console.error(`❌ Download failed: ${downloadError.message}`);
-        return res.status(500).json({ error: 'Download failed', message: downloadError.message });
+        console.error(`❌ RapidAPI Download Error Details:`);
+        console.error(`   Status: ${downloadError.response?.status || 'N/A'}`);
+        console.error(`   Message: ${downloadError.message}`);
+        console.error(`   Response data:`, downloadError.response?.data);
+        return res.status(500).json({ 
+          error: 'Download failed', 
+          message: downloadError.message,
+          status: downloadError.response?.status,
+          details: downloadError.response?.data
+        });
       }
     }
 
