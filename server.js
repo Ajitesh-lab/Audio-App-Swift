@@ -454,12 +454,13 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
       }
     }
 
-    // If no valid audio file, download using RapidAPI
+    // If no valid audio file, download using yt-dlp (primary) or RapidAPI (fallback)
     if (!audioPath) {
       const outPath = join(downloadsDir, `${videoId}.mp3`);
-      console.log(`⬇️  Downloading via yt-dlp to ${outPath}`);
+      
+      // Try yt-dlp first (works from any server)
       try {
-        // Use yt-dlp to download audio directly (works from any server)
+        console.log(`⬇️  Attempting yt-dlp download...`);
         console.log(`🎵 Downloading YouTube audio: ${videoId}`);
         
         const { execSync } = require('child_process');
@@ -473,17 +474,63 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
           timeout: 60000 // 60 second timeout
         });
 
-        console.log(`✅ Download complete: ${outPath}`);
+        console.log(`✅ yt-dlp Download complete: ${outPath}`);
         audioPath = outPath;
-      } catch (downloadError) {
-        console.error(`❌ yt-dlp Download Error Details:`);
-        console.error(`   Message: ${downloadError.message}`);
-        console.error(`   stderr:`, downloadError.stderr?.toString());
-        return res.status(500).json({ 
-          error: 'Download failed', 
-          message: downloadError.message,
-          details: downloadError.stderr?.toString()
-        });
+      } catch (ytdlpError) {
+        console.warn(`⚠️  yt-dlp failed, trying RapidAPI fallback...`);
+        console.warn(`   Error: ${ytdlpError.message}`);
+        
+        // Fallback to RapidAPI
+        try {
+          console.log(`🔑 Using RapidAPI: ${RAPIDAPI_HOST}`);
+          console.log(`📍 Request URL: https://${RAPIDAPI_HOST}/dl?id=${videoId}`);
+          
+          const response = await axios.get(`https://${RAPIDAPI_HOST}/dl`, {
+            params: { id: videoId },
+            headers: {
+              'X-RapidAPI-Key': RAPIDAPI_KEY,
+              'X-RapidAPI-Host': RAPIDAPI_HOST
+            },
+            timeout: 15000
+          });
+          
+          console.log(`✅ RapidAPI response status: ${response.status}`);
+          const audioUrl = response.data.link;
+          
+          if (!audioUrl) {
+            throw new Error('No audio URL in RapidAPI response');
+          }
+
+          console.log(`📥 Downloading audio from RapidAPI URL...`);
+          
+          // Download the audio file
+          const audioResponse = await axios({
+            method: 'get',
+            url: audioUrl,
+            responseType: 'stream'
+          });
+
+          const writer = fs.createWriteStream(outPath);
+          audioResponse.data.pipe(writer);
+
+          await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+          });
+
+          console.log(`✅ RapidAPI Download complete: ${outPath}`);
+          audioPath = outPath;
+        } catch (rapidapiError) {
+          console.error(`❌ Both yt-dlp and RapidAPI failed`);
+          console.error(`   yt-dlp: ${ytdlpError.message}`);
+          console.error(`   RapidAPI: ${rapidapiError.message}`);
+          return res.status(500).json({ 
+            error: 'Download failed', 
+            message: `Both methods failed - yt-dlp: ${ytdlpError.message}, RapidAPI: ${rapidapiError.message}`,
+            ytdlpError: ytdlpError.message,
+            rapidapiError: rapidapiError.message
+          });
+        }
       }
     }
 
