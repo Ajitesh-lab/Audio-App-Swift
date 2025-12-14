@@ -1,0 +1,6 @@
+node_modules/
+downloads/
+alignments/
+.env
+*.log
+.DS_Store

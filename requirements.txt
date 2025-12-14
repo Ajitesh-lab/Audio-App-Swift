@@ -1,0 +1,6 @@
+# Minimal Python requirements for local Whisper alignment
+openai-whisper>=20231003
+whisperx>=1.0.0
+ffmpeg-python>=0.2.0
+
+# Note: whisperx requires torch; install recommended torch separately in the setup script

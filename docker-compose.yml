@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  music-server:
+    build: .
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./downloads:/app/downloads
+      - ./alignments:/app/alignments
+      - ~/.cache/huggingface:/root/.cache/huggingface  # Cache Whisper models
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - WHISPER_CMD=python3 /app/faster_whisper_cli.py {audio} --model {model} --output_dir {output_dir} --language en --word_timestamps True
+      - WHISPER_MODEL=base  # base is 5-10x faster than medium, still good accuracy
+    restart: unless-stopped
+    container_name: music-server
