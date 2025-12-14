@@ -7,8 +7,8 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install faster-whisper (much faster than openai-whisper)
-RUN pip3 install --no-cache-dir --break-system-packages faster-whisper yt-dlp
+# Install faster-whisper and download tools (yt-dlp primary, youtube-dl fallback)
+RUN pip3 install --no-cache-dir --break-system-packages faster-whisper yt-dlp youtube-dl
 
 WORKDIR /app
 

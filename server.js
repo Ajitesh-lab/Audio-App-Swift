@@ -454,11 +454,11 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
       }
     }
 
-    // If no valid audio file, download using yt-dlp (primary) or RapidAPI (fallback)
+    // If no valid audio file, download using yt-dlp (primary) or ytdl-core (fallback)
     if (!audioPath) {
       const outPath = join(downloadsDir, `${videoId}.mp3`);
       
-      // Try yt-dlp first (works from any server)
+      // Try yt-dlp first (works on most servers)
       try {
         console.log(`⬇️  Attempting yt-dlp download...`);
         console.log(`🎵 Downloading YouTube audio: ${videoId}`);
@@ -468,7 +468,7 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
         console.log(`📍 Running: ${ytdlpCommand}`);
         
         await new Promise((resolve, reject) => {
-          exec(ytdlpCommand, { timeout: 60000 }, (error, stdout, stderr) => {
+          exec(ytdlpCommand, { timeout: 90000 }, (error, stdout, stderr) => {
             if (error) {
               console.error(`yt-dlp error: ${stderr}`);
               reject(error);
@@ -482,58 +482,39 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
         console.log(`✅ yt-dlp Download complete: ${outPath}`);
         audioPath = outPath;
       } catch (ytdlpError) {
-        console.warn(`⚠️  yt-dlp failed, trying RapidAPI fallback...`);
+        console.warn(`⚠️  yt-dlp failed, trying youtube-dl-exec fallback...`);
         console.warn(`   Error: ${ytdlpError.message}`);
         
-        // Fallback to RapidAPI
+        // Fallback to youtube-dl-exec (another implementation)
         try {
-          console.log(`🔑 Using RapidAPI: ${RAPIDAPI_HOST}`);
-          console.log(`📍 Request URL: https://${RAPIDAPI_HOST}/dl?id=${videoId}`);
+          console.log(`🔄 Using youtube-dl as fallback`);
           
-          const response = await axios.get(`https://${RAPIDAPI_HOST}/dl`, {
-            params: { id: videoId },
-            headers: {
-              'X-RapidAPI-Key': RAPIDAPI_KEY,
-              'X-RapidAPI-Host': RAPIDAPI_HOST
-            },
-            timeout: 15000
-          });
+          const youtubedlCommand = `youtube-dl -x --audio-format mp3 --audio-quality 0 -o "${outPath}" "https://www.youtube.com/watch?v=${videoId}"`;
+          console.log(`📍 Running: ${youtubedlCommand}`);
           
-          console.log(`✅ RapidAPI response status: ${response.status}`);
-          const audioUrl = response.data.link;
-          
-          if (!audioUrl) {
-            throw new Error('No audio URL in RapidAPI response');
-          }
-
-          console.log(`📥 Downloading audio from RapidAPI URL...`);
-          
-          // Download the audio file
-          const audioResponse = await axios({
-            method: 'get',
-            url: audioUrl,
-            responseType: 'stream'
-          });
-
-          const writer = fs.createWriteStream(outPath);
-          audioResponse.data.pipe(writer);
-
           await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
+            exec(youtubedlCommand, { timeout: 90000 }, (error, stdout, stderr) => {
+              if (error) {
+                console.error(`youtube-dl error: ${stderr}`);
+                reject(error);
+              } else {
+                console.log(`youtube-dl output: ${stdout}`);
+                resolve();
+              }
+            });
           });
 
-          console.log(`✅ RapidAPI Download complete: ${outPath}`);
+          console.log(`✅ youtube-dl Download complete: ${outPath}`);
           audioPath = outPath;
-        } catch (rapidapiError) {
-          console.error(`❌ Both yt-dlp and RapidAPI failed`);
+        } catch (youtubedlError) {
+          console.error(`❌ Both download methods failed`);
           console.error(`   yt-dlp: ${ytdlpError.message}`);
-          console.error(`   RapidAPI: ${rapidapiError.message}`);
+          console.error(`   youtube-dl: ${youtubedlError.message}`);
           return res.status(500).json({ 
             error: 'Download failed', 
-            message: `Both methods failed - yt-dlp: ${ytdlpError.message}, RapidAPI: ${rapidapiError.message}`,
+            message: `Both methods failed - yt-dlp: ${ytdlpError.message}, youtube-dl: ${youtubedlError.message}`,
             ytdlpError: ytdlpError.message,
-            rapidapiError: rapidapiError.message
+            youtubedlError: youtubedlError.message
           });
         }
       }
