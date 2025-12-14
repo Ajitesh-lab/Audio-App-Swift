@@ -463,15 +463,20 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
         console.log(`⬇️  Attempting yt-dlp download...`);
         console.log(`🎵 Downloading YouTube audio: ${videoId}`);
         
-        const { execSync } = require('child_process');
-        
         // Download using yt-dlp with best audio quality
         const ytdlpCommand = `yt-dlp -x --audio-format mp3 --audio-quality 0 -o "${outPath}" "https://www.youtube.com/watch?v=${videoId}"`;
         console.log(`📍 Running: ${ytdlpCommand}`);
         
-        execSync(ytdlpCommand, { 
-          stdio: 'inherit',
-          timeout: 60000 // 60 second timeout
+        await new Promise((resolve, reject) => {
+          exec(ytdlpCommand, { timeout: 60000 }, (error, stdout, stderr) => {
+            if (error) {
+              console.error(`yt-dlp error: ${stderr}`);
+              reject(error);
+            } else {
+              console.log(`yt-dlp output: ${stdout}`);
+              resolve();
+            }
+          });
         });
 
         console.log(`✅ yt-dlp Download complete: ${outPath}`);
