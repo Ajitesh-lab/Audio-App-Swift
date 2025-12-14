@@ -457,56 +457,32 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
     // If no valid audio file, download using RapidAPI
     if (!audioPath) {
       const outPath = join(downloadsDir, `${videoId}.mp3`);
-      console.log(`⬇️  Downloading via RapidAPI to ${outPath}`);
+      console.log(`⬇️  Downloading via yt-dlp to ${outPath}`);
       try {
-        // Get audio URL from RapidAPI
-        console.log(`🔑 Using RapidAPI: ${RAPIDAPI_HOST}`);
-        console.log(`📍 Request URL: https://${RAPIDAPI_HOST}/dl?id=${videoId}`);
-        const response = await axios.get(`https://${RAPIDAPI_HOST}/dl`, {
-          params: { id: videoId },
-          headers: {
-            'X-RapidAPI-Key': RAPIDAPI_KEY,
-            'X-RapidAPI-Host': RAPIDAPI_HOST
-          },
-          timeout: 15000
-        });
-        console.log(`✅ RapidAPI response status: ${response.status}`);
-        console.log(`📦 RapidAPI response data:`, JSON.stringify(response.data).substring(0, 200));
-
-        const audioUrl = response.data.link;
-        if (!audioUrl) {
-          throw new Error('No audio URL in RapidAPI response');
-        }
-
-        console.log(`📥 Downloading audio from RapidAPI URL...`);
+        // Use yt-dlp to download audio directly (works from any server)
+        console.log(`🎵 Downloading YouTube audio: ${videoId}`);
         
-        // Download the audio file
-        const audioResponse = await axios({
-          method: 'get',
-          url: audioUrl,
-          responseType: 'stream'
-        });
-
-        const writer = fs.createWriteStream(outPath);
-        audioResponse.data.pipe(writer);
-
-        await new Promise((resolve, reject) => {
-          writer.on('finish', resolve);
-          writer.on('error', reject);
+        const { execSync } = require('child_process');
+        
+        // Download using yt-dlp with best audio quality
+        const ytdlpCommand = `yt-dlp -x --audio-format mp3 --audio-quality 0 -o "${outPath}" "https://www.youtube.com/watch?v=${videoId}"`;
+        console.log(`📍 Running: ${ytdlpCommand}`);
+        
+        execSync(ytdlpCommand, { 
+          stdio: 'inherit',
+          timeout: 60000 // 60 second timeout
         });
 
         console.log(`✅ Download complete: ${outPath}`);
         audioPath = outPath;
       } catch (downloadError) {
-        console.error(`❌ RapidAPI Download Error Details:`);
-        console.error(`   Status: ${downloadError.response?.status || 'N/A'}`);
+        console.error(`❌ yt-dlp Download Error Details:`);
         console.error(`   Message: ${downloadError.message}`);
-        console.error(`   Response data:`, downloadError.response?.data);
+        console.error(`   stderr:`, downloadError.stderr?.toString());
         return res.status(500).json({ 
           error: 'Download failed', 
           message: downloadError.message,
-          status: downloadError.response?.status,
-          details: downloadError.response?.data
+          details: downloadError.stderr?.toString()
         });
       }
     }
