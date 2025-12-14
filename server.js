@@ -857,6 +857,18 @@ app.post('/api/download-audio', async (req, res) => {
 // Serve downloaded files
 app.use('/downloads', express.static(downloadsDir));
 
+// Debug endpoint to check environment variables (for troubleshooting)
+app.get('/api/debug/env', (req, res) => {
+  res.json({
+    hasRapidApiKey: !!process.env.RAPIDAPI_KEY,
+    rapidApiKeyLength: process.env.RAPIDAPI_KEY ? process.env.RAPIDAPI_KEY.length : 0,
+    rapidApiKeyPrefix: process.env.RAPIDAPI_KEY ? process.env.RAPIDAPI_KEY.substring(0, 10) + '...' : 'NOT SET',
+    rapidApiHost: RAPIDAPI_HOST,
+    hasSpotifyClientId: !!process.env.SPOTIFY_CLIENT_ID,
+    hasSpotifyClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET
+  });
+});
+
 // ---------- Spotify OAuth Token Exchange ----------
 app.post('/api/spotify/token', async (req, res) => {
   try {
