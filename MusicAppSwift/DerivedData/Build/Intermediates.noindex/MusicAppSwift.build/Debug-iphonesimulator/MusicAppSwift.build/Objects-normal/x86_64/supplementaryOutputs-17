@@ -1,0 +1,23 @@
+{
+  "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/MusicAppSwift/PlaylistDetailView.swift" : {
+    "const-values" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistDetailView.swiftconstvalues",
+    "dependencies" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistDetailView.d",
+    "diagnostics" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistDetailView.dia",
+    "object" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistDetailView.o",
+    "swift-dependencies" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistDetailView.swiftdeps"
+  },
+  "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/MusicAppSwift/PlaylistManager.swift" : {
+    "const-values" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistManager.swiftconstvalues",
+    "dependencies" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistManager.d",
+    "diagnostics" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistManager.dia",
+    "object" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistManager.o",
+    "swift-dependencies" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistManager.swiftdeps"
+  },
+  "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/MusicAppSwift/PlaylistPickerView.swift" : {
+    "const-values" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistPickerView.swiftconstvalues",
+    "dependencies" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistPickerView.d",
+    "diagnostics" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistPickerView.dia",
+    "object" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistPickerView.o",
+    "swift-dependencies" : "/Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/DerivedData/Build/Intermediates.noindex/MusicAppSwift.build/Debug-iphonesimulator/MusicAppSwift.build/Objects-normal/x86_64/PlaylistPickerView.swiftdeps"
+  }
+}

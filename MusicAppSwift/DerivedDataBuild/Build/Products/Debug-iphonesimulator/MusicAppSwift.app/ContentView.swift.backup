@@ -1,0 +1,397 @@
+//
+//  ContentView.swift
+//  MusicAppSwift
+//
+//  Created by Devendra Rawat on 06/12/2025.
+//
+
+import SwiftUI
+import AVFoundation
+
+struct ContentView: View {
+    @StateObject private var musicPlayer = MusicPlayer()
+    @State private var selectedTab = 0
+    @State private var searchText = ""
+    @State private var showYouTubeSearch = false
+    @State private var showCreatePlaylist = false
+    @State private var showExpandedPlayer = false
+    
+    var filteredSongs: [Song] {
+        if searchText.isEmpty {
+            return musicPlayer.songs
+        }
+        return musicPlayer.songs.filter { song in
+            song.title.localizedCaseInsensitiveContains(searchText) ||
+            song.artist.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 0.86, green: 0.92, blue: 0.99),
+                    Color(red: 0.93, green: 0.96, blue: 1.0)
+                ]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Search Bar
+                GlassCard {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.gray)
+                        TextField("Search songs or artists...", text: $searchText)
+                            .textFieldStyle(PlainTextFieldStyle())
+                    }
+                    .padding(8)
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                
+                // Main Content
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Playlists Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Your Library")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                Spacer()
+                                Button(action: { showCreatePlaylist = true }) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title2)
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                            .padding(.horizontal)
+                            
+                            if !musicPlayer.playlists.isEmpty {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 12) {
+                                        ForEach(musicPlayer.playlists) { playlist in
+                                            PlaylistCard(playlist: playlist)
+                                                .onTapGesture {
+                                                    // Filter by playlist
+                                                }
+                                        }
+                                    }
+                                    .padding(.horizontal)
+                                }
+                            }
+                        }
+                        
+                        // Songs List
+                        VStack(spacing: 12) {
+                            if filteredSongs.isEmpty {
+                                GlassCard {
+                                    VStack(spacing: 16) {
+                                        Image(systemName: "music.note")
+                                            .font(.system(size: 60))
+                                            .foregroundColor(.gray)
+                                        Text("No songs yet")
+                                            .font(.title3)
+                                            .fontWeight(.semibold)
+                                        Text("Download from YouTube to get started!")
+                                            .foregroundColor(.gray)
+                                    }
+                                    .padding(40)
+                                }
+                                .padding(.horizontal)
+                            } else {
+                                ForEach(filteredSongs) { song in
+                                    SongRow(song: song, musicPlayer: musicPlayer)
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                    .padding(.vertical)
+                }
+                
+                // Mini Player
+                if let currentSong = musicPlayer.currentSong {
+                    MiniPlayer(song: currentSong, musicPlayer: musicPlayer)
+                        .onTapGesture {
+                            showExpandedPlayer = true
+                        }
+                }
+                
+                // Bottom Navigation
+                BottomNavigationBar(selectedTab: $selectedTab, showYouTubeSearch: $showYouTubeSearch)
+            }
+        }
+        .sheet(isPresented: $showYouTubeSearch) {
+            YouTubeSearchView(musicPlayer: musicPlayer)
+        }
+        .sheet(isPresented: $showCreatePlaylist) {
+            CreatePlaylistView(musicPlayer: musicPlayer)
+        }
+        .sheet(isPresented: $showExpandedPlayer) {
+            if let currentSong = musicPlayer.currentSong {
+                ExpandedPlayerView(song: currentSong, musicPlayer: musicPlayer)
+            }
+        }
+    }
+}
+
+// MARK: - Glass Card
+struct GlassCard<Content: View>: View {
+    let content: Content
+    
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+    
+    var body: some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.7))
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(.ultraThinMaterial)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+            )
+    }
+}
+
+// MARK: - Song Row
+struct SongRow: View {
+    let song: Song
+    @ObservedObject var musicPlayer: MusicPlayer
+    
+    var body: some View {
+        GlassCard {
+            HStack {
+                // Album Art
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(LinearGradient(
+                        gradient: Gradient(colors: [.blue, .purple]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .frame(width: 50, height: 50)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .foregroundColor(.white)
+                    )
+                
+                VStack(alignment: .leading) {
+                    Text(song.title)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                    Text(song.artist)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                // Like Button
+                Button(action: {
+                    musicPlayer.toggleLike(song)
+                }) {
+                    Image(systemName: musicPlayer.likedSongs.contains(song.id) ? "heart.fill" : "heart")
+                        .foregroundColor(musicPlayer.likedSongs.contains(song.id) ? .red : .gray)
+                }
+                .padding(.trailing, 8)
+                
+                // Play Button
+                Button(action: {
+                    musicPlayer.play(song)
+                }) {
+                    Image(systemName: musicPlayer.currentSong?.id == song.id && musicPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                }
+            }
+            .padding(12)
+        }
+    }
+}
+
+// MARK: - Playlist Card
+struct PlaylistCard: View {
+    let playlist: Playlist
+    
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 8) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(hex: playlist.color))
+                    .frame(width: 120, height: 80)
+                    .overlay(
+                        VStack {
+                            Image(systemName: "music.note.list")
+                                .font(.title)
+                                .foregroundColor(.white)
+                            Text("\(playlist.songs.count)")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                        }
+                    )
+                
+                Text(playlist.name)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .frame(width: 120)
+            }
+            .padding(12)
+        }
+    }
+}
+
+// MARK: - Mini Player
+struct MiniPlayer: View {
+    let song: Song
+    @ObservedObject var musicPlayer: MusicPlayer
+    
+    var body: some View {
+        GlassCard {
+            VStack(spacing: 8) {
+                // Progress Bar
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(height: 3)
+                        
+                        Rectangle()
+                            .fill(Color.blue)
+                            .frame(width: geometry.size.width * CGFloat(musicPlayer.progress), height: 3)
+                    }
+                }
+                .frame(height: 3)
+                
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(song.title)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                        Text(song.artist)
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
+                    }
+                    
+                    Spacer()
+                    
+                    // Controls
+                    Button(action: { musicPlayer.skipBackward() }) {
+                        Image(systemName: "backward.fill")
+                            .font(.title3)
+                    }
+                    
+                    Button(action: { musicPlayer.togglePlayPause() }) {
+                        Image(systemName: musicPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.title)
+                    }
+                    .padding(.horizontal, 8)
+                    
+                    Button(action: { musicPlayer.skipForward() }) {
+                        Image(systemName: "forward.fill")
+                            .font(.title3)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+    }
+}
+
+// MARK: - Bottom Navigation
+struct BottomNavigationBar: View {
+    @Binding var selectedTab: Int
+    @Binding var showYouTubeSearch: Bool
+    
+    var body: some View {
+        GlassCard {
+            HStack(spacing: 0) {
+                NavButton(icon: "house.fill", title: "Home", isSelected: selectedTab == 0) {
+                    selectedTab = 0
+                }
+                
+                NavButton(icon: "magnifyingglass", title: "Search", isSelected: selectedTab == 1) {
+                    showYouTubeSearch = true
+                }
+                
+                NavButton(icon: "music.note.list", title: "Library", isSelected: selectedTab == 2) {
+                    selectedTab = 2
+                }
+                
+                NavButton(icon: "person.fill", title: "Profile", isSelected: selectedTab == 3) {
+                    selectedTab = 3
+                }
+            }
+            .padding(.vertical, 8)
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+    }
+}
+
+struct NavButton: View {
+    let icon: String
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.title3)
+                Text(title)
+                    .font(.caption2)
+            }
+            .foregroundColor(isSelected ? .blue : .gray)
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+// MARK: - Color Extension
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
+#Preview {
+    ContentView()
+}

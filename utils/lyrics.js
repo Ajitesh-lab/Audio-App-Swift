@@ -133,8 +133,24 @@ export const alignLyricsToWhisper = (plainLines, whisperSegments, whisperTokens 
     };
   }
 
-  // NO GLOBAL OFFSET - Let Whisper timestamps be the source of truth
-  console.log(`🔍 Aligning ${lines.length} lyric lines to ${segments.length} Whisper segments (no global offset)`);
+  // Auto-detect offset using first vocal detection (reliable method)
+  let detectedOffset = 0;
+  console.log(`🔍 Offset detection: lines=${lines.length}, segments=${segments.length}`);
+
+  // Use detectFirstVocal to find when singing actually starts
+  const firstVocalTime = detectFirstVocal(segments, {
+    minDuration: 0.5,
+    maxNoSpeech: 0.3,
+    minLogProb: -1.5
+  });
+
+  if (firstVocalTime !== null) {
+    // Assume lyrics start at or near the first vocal
+    detectedOffset = firstVocalTime;
+    console.log(`🎯 Auto-detected offset: ${detectedOffset.toFixed(2)}s (first vocal detected)`);
+  } else {
+    console.log(`⚠️ No clear first vocal detected, using 0 offset`);
+  }
 
   const results = [];
   let segIndex = 0;
