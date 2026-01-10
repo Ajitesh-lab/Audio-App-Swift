@@ -37,6 +37,167 @@ app.use(cors({
 // RapidAPI configuration
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '5a2bd678camsh6ae73794f0bd56fp1c7f49jsn1e92cc36ecd3';
 const RAPIDAPI_HOST = 'youtube-mp36.p.rapidapi.com';
+const RAPIDAPI_USERNAME = process.env.RAPIDAPI_USERNAME || 'rawat.rac11'; // Your RapidAPI username
+
+// Compute X-RUN header (md5 of username for CDN authentication)
+const getXRunHeader = () => {
+  return crypto.createHash('md5').update(RAPIDAPI_USERNAME, 'utf8').digest('hex');
+};
+
+// Build User-Agent with RapidAPI username (for CDN authentication)
+const getRapidAPIUserAgent = () => {
+  return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 ${RAPIDAPI_USERNAME}`;
+};
+
+// Helper to redact sensitive headers in logs
+const redactHeaders = (headers) => {
+  const safe = { ...headers };
+  if (safe['X-RapidAPI-Key']) safe['X-RapidAPI-Key'] = '***REDACTED***';
+  if (safe['x-run']) safe['x-run'] = '***REDACTED***';
+  return safe;
+};
+
+// Get fresh download URL from RapidAPI (can be called multiple times for retries)
+const getRapidAudioUrl = async (videoId) => {
+  console.log(`📡 Calling RapidAPI for fresh download URL: ${videoId}`);
+  
+  const response = await axios.get(`https://${RAPIDAPI_HOST}/dl`, {
+    params: { id: videoId },
+    headers: {
+      'X-RapidAPI-Key': RAPIDAPI_KEY,
+      'X-RapidAPI-Host': RAPIDAPI_HOST
+    },
+    timeout: 15000
+  });
+
+  console.log(`📦 RapidAPI response:`, {
+    ...response.data,
+    link: response.data.link ? `${response.data.link.substring(0, 60)}...` : 'MISSING'
+  });
+
+  const url = response.data?.link || response.data?.url;
+  if (!url) {
+    throw new Error(`RapidAPI did not return a download URL: ${JSON.stringify(response.data)}`);
+  }
+
+  return {
+    url,
+    title: response.data?.title || videoId,
+    ext: response.data?.ext || response.data?.format || 'mp3'
+  };
+};
+
+// Validate URL by streaming first few bytes (not HEAD - CDNs are weird with HEAD)
+const urlLooksLikeAudio = async (url) => {
+  try {
+    console.log(`🔍 Validating URL by streaming probe...`);
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      timeout: 10000,
+      validateStatus: () => true, // Don't throw on 404
+      headers: {
+        'User-Agent': getRapidAPIUserAgent(), // Include RapidAPI username
+        'x-run': getXRunHeader(), // MD5 of username for CDN auth
+        'Accept': 'audio/*,*/*',
+        'Referer': 'https://www.youtube.com/',
+        'Accept-Encoding': 'identity'
+      }
+    });
+
+    const contentType = (response.headers['content-type'] || '').toLowerCase();
+    const isValidStatus = response.status >= 200 && response.status < 300;
+    const isAudio = contentType.includes('audio') || contentType.includes('octet-stream') || contentType.includes('mpeg');
+
+    // Destroy stream immediately (we only probed)
+    response.data.destroy?.();
+
+    if (isValidStatus && isAudio) {
+      console.log(`✅ URL valid: status ${response.status}, type ${contentType}`);
+      return true;
+    }
+
+    console.log(`❌ URL invalid: status ${response.status}, type ${contentType}`);
+    return false;
+  } catch (error) {
+    console.log(`❌ URL probe failed: ${error.message}`);
+    return false;
+  }
+};
+
+// Download with re-fetch retry logic (gets FRESH URLs from RapidAPI on each retry)
+const downloadWithRefetch = async (videoId, outDir) => {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`\n🎯 Attempt ${attempt}/${maxAttempts}: Fetching fresh download URL from RapidAPI...`);
+      
+      // Get FRESH URL from RapidAPI (not reusing old one)
+      const { url, title, ext } = await getRapidAudioUrl(videoId);
+
+      // Validate URL before attempting full download
+      const isValid = await urlLooksLikeAudio(url);
+      if (!isValid) {
+        console.warn(`⚠️  Attempt ${attempt}/${maxAttempts}: RapidAPI returned dead/non-audio URL, refetching...`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+        continue; // Re-fetch a NEW URL from RapidAPI
+      }
+
+      const safeName = `${videoId}.${ext}`;
+      const outPath = join(outDir, safeName);
+
+      console.log(`📥 Downloading from validated URL to: ${safeName}`);
+      
+      const response = await axios.get(url, {
+        responseType: 'stream',
+        timeout: 60000,
+        validateStatus: () => true,
+        headers: {
+          'User-Agent': getRapidAPIUserAgent(), // Include RapidAPI username
+          'x-run': getXRunHeader(), // MD5 of username for CDN auth
+          'Accept': 'audio/*,*/*',
+          'Referer': 'https://www.youtube.com/',
+          'Accept-Encoding': 'identity'
+        }
+      });
+
+      // Check response status
+      if (response.status < 200 || response.status >= 300) {
+        // Read error body for debugging
+        let errorBody = '';
+        for await (const chunk of response.data) {
+          errorBody += chunk.toString('utf8');
+          if (errorBody.length > 300) break;
+        }
+        throw new Error(`Download failed with status ${response.status}: ${errorBody.slice(0, 300)}`);
+      }
+
+      const writer = fs.createWriteStream(outPath);
+      response.data.pipe(writer);
+
+      await new Promise((resolve, reject) => {
+        writer.on('finish', () => {
+          const stats = fs.statSync(outPath);
+          console.log(`✅ Download complete: ${outPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+          resolve();
+        });
+        writer.on('error', reject);
+        response.data.on('error', reject);
+      });
+
+      return { outPath, title };
+      
+    } catch (error) {
+      console.error(`❌ Attempt ${attempt}/${maxAttempts} failed: ${error.message}`);
+      if (attempt === maxAttempts) {
+        throw new Error(`Failed after ${maxAttempts} attempts: ${error.message}`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait before retry
+    }
+  }
+
+  throw new Error(`Failed after ${maxAttempts} attempts: RapidAPI kept returning dead URLs`);
+};
 
 // Cache for audio URLs (expires after 2 hours)
 const urlCache = new Map();
@@ -300,57 +461,91 @@ app.post('/api/align', express.json(), async (req, res) => {
 });
 
 
-// Stream audio using RapidAPI
+// Stream audio using RapidAPI with re-fetch retry
 app.get('/api/download/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
     
-    console.log(`📥 Streaming audio via RapidAPI for: ${videoId}`);
+    console.log(`📥 Streaming audio for: ${videoId}`);
 
-    // Get audio URL from RapidAPI
-    const response = await axios.get(`https://${RAPIDAPI_HOST}/dl`, {
-      params: { id: videoId },
-      headers: {
-        'X-RapidAPI-Key': RAPIDAPI_KEY,
-        'X-RapidAPI-Host': RAPIDAPI_HOST
-      },
-      timeout: 15000
-    });
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(`🎯 Attempt ${attempt}/${maxAttempts}: Getting fresh download URL...`);
+        
+        const { url } = await getRapidAudioUrl(videoId);
 
-    const audioUrl = response.data.link;
-    if (!audioUrl) {
-      throw new Error('No audio URL in response');
-    }
+        // Validate before streaming
+        const isValid = await urlLooksLikeAudio(url);
+        if (!isValid) {
+          console.warn(`⚠️  Attempt ${attempt}/${maxAttempts}: Invalid URL, refetching...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
 
-    console.log(`✅ Got audio URL, proxying stream...`);
+        console.log(`✅ Valid URL found, streaming...`);
 
-    // Stream the audio from RapidAPI URL
-    const audioResponse = await axios({
-      method: 'get',
-      url: audioUrl,
-      responseType: 'stream',
-      timeout: 0
-    });
+        const audioResponse = await axios({
+          method: 'get',
+          url: url,
+          responseType: 'stream',
+          timeout: 0,
+          validateStatus: () => true,
+          headers: {
+            'User-Agent': getRapidAPIUserAgent(), // Include RapidAPI username
+            'x-run': getXRunHeader(), // MD5 of username for CDN auth
+            'Accept': 'audio/*,*/*',
+            'Referer': 'https://www.youtube.com/',
+            'Accept-Encoding': 'identity'
+          }
+        });
 
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp3"`);
+        // Check status before streaming
+        if (audioResponse.status < 200 || audioResponse.status >= 300) {
+          let errorBody = '';
+          for await (const chunk of audioResponse.data) {
+            errorBody += chunk.toString('utf8');
+            if (errorBody.length > 300) break;
+          }
+          throw new Error(`Stream failed with status ${audioResponse.status}: ${errorBody.slice(0, 300)}`);
+        }
 
-    audioResponse.data.pipe(res);
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp3"`);
 
-    audioResponse.data.on('error', (error) => {
-      console.error('❌ Audio stream error:', error.message);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to stream audio' });
+        audioResponse.data.pipe(res);
+
+        audioResponse.data.on('error', (error) => {
+          console.error('❌ Audio stream error:', error.message);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to stream audio', message: error.message });
+          }
+        });
+
+        audioResponse.data.on('end', () => {
+          console.log(`✅ Finished streaming: ${videoId}`);
+        });
+
+        return; // Success
+        
+      } catch (attemptError) {
+        console.error(`❌ Attempt ${attempt}/${maxAttempts} failed: ${attemptError.message}`);
+        if (attempt === maxAttempts) {
+          throw attemptError;
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
-    });
-
-    audioResponse.data.on('end', () => {
-      console.log(`✅ Finished streaming: ${videoId}`);
-    });
+    }
     
   } catch (error) {
-    console.error('❌ Error downloading audio:', error.message);
-    res.status(500).json({ error: 'Failed to download audio', details: error.message });
+    console.error('❌ Error streaming audio:', error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Failed to stream audio', 
+        details: error.message,
+        hint: 'RapidAPI repeatedly returned invalid URLs'
+      });
+    }
   }
 });
 
@@ -454,7 +649,7 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
       }
     }
 
-    // If no valid audio file, download using yt-dlp (primary) or ytdl-core (fallback)
+    // If no valid audio file, download using yt-dlp (primary), then fall back as needed.
     if (!audioPath) {
       const outPath = join(downloadsDir, `${videoId}.mp3`);
       
@@ -482,10 +677,10 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
         console.log(`✅ yt-dlp Download complete: ${outPath}`);
         audioPath = outPath;
       } catch (ytdlpError) {
-        console.warn(`⚠️  yt-dlp failed, trying youtube-dl-exec fallback...`);
+        console.warn(`⚠️  yt-dlp failed, trying youtube-dl fallback...`);
         console.warn(`   Error: ${ytdlpError.message}`);
         
-        // Fallback to youtube-dl-exec (another implementation)
+        // Fallback to youtube-dl (another implementation)
         try {
           console.log(`🔄 Using youtube-dl as fallback`);
           
@@ -507,15 +702,28 @@ app.post('/api/download-sync/:videoId', async (req, res) => {
           console.log(`✅ youtube-dl Download complete: ${outPath}`);
           audioPath = outPath;
         } catch (youtubedlError) {
-          console.error(`❌ Both download methods failed`);
-          console.error(`   yt-dlp: ${ytdlpError.message}`);
-          console.error(`   youtube-dl: ${youtubedlError.message}`);
-          return res.status(500).json({ 
-            error: 'Download failed', 
-            message: `Both methods failed - yt-dlp: ${ytdlpError.message}, youtube-dl: ${youtubedlError.message}`,
-            ytdlpError: ytdlpError.message,
-            youtubedlError: youtubedlError.message
-          });
+          console.warn(`⚠️  youtube-dl failed, trying RapidAPI re-fetch fallback...`);
+          console.warn(`   Error: ${youtubedlError.message}`);
+
+          try {
+            console.log(`⬇️  Starting RapidAPI download with re-fetch retry for ${videoId}`);
+            const result = await downloadWithRefetch(videoId, downloadsDir);
+            audioPath = result.outPath;
+            console.log(`✅ RapidAPI Download complete: ${audioPath}`);
+          } catch (rapidApiError) {
+            console.error(`❌ All download methods failed`);
+            console.error(`   yt-dlp: ${ytdlpError.message}`);
+            console.error(`   youtube-dl: ${youtubedlError.message}`);
+            console.error(`   RapidAPI: ${rapidApiError.message}`);
+            return res.status(500).json({ 
+              error: 'Download failed', 
+              message: `yt-dlp: ${ytdlpError.message}; youtube-dl: ${youtubedlError.message}; RapidAPI: ${rapidApiError.message}`,
+              ytdlpError: ytdlpError.message,
+              youtubedlError: youtubedlError.message,
+              rapidApiError: rapidApiError.message,
+              hint: 'All download methods failed. Check yt-dlp/youtube-dl availability and RapidAPI status.'
+            });
+          }
         }
       }
     }

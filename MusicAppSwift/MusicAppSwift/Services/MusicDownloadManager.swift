@@ -169,6 +169,19 @@ class MusicDownloadManager {
         
         print("🎯 Match quality: \(matchQuality.description)")
         
+        // REJECT poor matches - they're likely wrong tracks with wrong artwork
+        if matchQuality == .poor {
+            print("❌ REJECTED: Match quality too low - risk of wrong artwork")
+            throw DownloadError.spotifyMatchRequired
+        }
+        
+        // Check if YouTube title suggests remix/cover - warn but allow
+        if TitleParser.isRemixOrCover(youtubeTitle) {
+            print("⚠️ WARNING: YouTube title suggests remix/cover version")
+            print("   Spotify match: \(track.name) by \(track.primaryArtist)")
+            print("   Proceeding with official Spotify artwork...")
+        }
+        
         // ALWAYS use Spotify metadata - it's the source of truth
         let finalArtist = track.primaryArtist
         let finalTrack = track.name
@@ -230,52 +243,31 @@ class MusicDownloadManager {
             outputPath: audioPath.path
         )
         
-        // Step 5: Download artwork (REQUIRED - try high-res sources first)
+        // Step 5: Download artwork (REQUIRED - ONLY use Spotify official artwork)
         progressCallback("Downloading artwork...")
         let artworkPath = songDir.appendingPathComponent("cover.jpg")
         
-        print("🎨 Downloading album artwork from Spotify only...")
-        var artworkData: Data?
-        var artworkSource = "Spotify"
+        print("🎨 Downloading official album artwork from Spotify...")
         
-        // ONLY use Spotify artwork - no YouTube thumbnails or other sources
-        // Try iTunes Search API first - often has 1400x1400 or higher
-        do {
-            print("   🔍 Trying iTunes for high-res artwork (1400x1400+)...")
-            artworkData = try await fetchiTunesArtwork(artist: finalArtist, album: finalAlbum)
-            if let data = artworkData, data.count > 0 {
-                artworkSource = "iTunes (high-res)"
-                print("   ✅ Got high-res artwork from iTunes!")
-            }
-        } catch {
-            print("   ⚠️ iTunes fetch failed: \(error)")
-        }
+        // ONLY use Spotify artwork - guaranteed to be official cover
+        let artworkData = try await spotifyService.downloadArtwork(from: finalArtworkURL)
         
-        // Fallback to Spotify if iTunes failed
-        if artworkData == nil {
-            print("   📥 Using Spotify artwork...")
-            artworkData = try await spotifyService.downloadArtwork(from: finalArtworkURL)
-            artworkSource = "Spotify (640x640)"
-        }
-        
-        guard let finalArtworkData = artworkData else {
-            throw DownloadError.artworkDownloadFailed
-        }
-        
-        print("   💾 Downloaded \(finalArtworkData.count) bytes from \(artworkSource)")
+        print("   💾 Downloaded \(artworkData.count) bytes from Spotify")
+        print("   📦 Artwork resolution: Spotify official (640x640 or higher)")
+        print("   💿 Album: \(finalAlbum)")
         print("   Save path: \(artworkPath.path)")
         
         do {
-            try finalArtworkData.write(to: artworkPath)
-            print("   ✅ Artwork saved successfully")
+            try artworkData.write(to: artworkPath)
+            print("   ✅ Official artwork saved successfully")
             
             // Verify file exists
             guard fileManager.fileExists(atPath: artworkPath.path) else {
                 throw DownloadError.artworkSaveFailed
             }
-            print("   ✅ Verified: Album artwork on disk")
+            print("   ✅ Verified: Official album artwork on disk")
         } catch {
-            print("   ❌ CRITICAL: Failed to download/save artwork: \(error)")
+            print("   ❌ CRITICAL: Failed to save artwork: \(error)")
             throw DownloadError.artworkDownloadFailed
         }
         
@@ -311,62 +303,42 @@ class MusicDownloadManager {
             album: finalAlbum,
             duration: Double(finalDuration) / 1000.0,
             url: audioPath.absoluteString,
+            spotifyTrackId: spotifyId,
+            artworkURL: nil,
             artworkPath: artworkPath.path,
             spotifyId: spotifyId,
             isrc: isrc,
-            videoId: youtubeVideoId
+            videoId: youtubeVideoId,
+            audioFingerprint: nil
         )
     }
     
-    // MARK: - YouTube Download via Server
+    // MARK: - YouTube Download via Server with Fallback
     
     private func downloadYouTubeAudio(url: String, outputPath: String) async throws {
         // Extract video ID from URL
         let videoId = url.components(separatedBy: "v=").last ?? url
         
-        // Call your server endpoint
-        let serverURL = URL(string: "http://192.168.1.133:3001/api/download-audio")!
-        var request = URLRequest(url: serverURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        Logger.log("Starting download with fallback for video: \(videoId)", category: "Download")
         
-        let body: [String: Any] = ["videoId": videoId]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        // Use fallback service to try multiple APIs
+        let tempURL = try await DownloadFallbackService.shared.downloadWithFallback(
+            videoId: videoId,
+            progressCallback: { progress in
+                Logger.log(progress, category: "Download")
+            }
+        )
         
-        print("📤 Requesting download from server for video: \(videoId)")
+        // Move the downloaded file to final location
+        let outputURL = URL(fileURLWithPath: outputPath)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        // Remove existing file if present
+        try? FileManager.default.removeItem(at: outputURL)
         
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw DownloadError.youtubeFailed
-        }
+        // Move temp file to final location
+        try FileManager.default.moveItem(at: tempURL, to: outputURL)
         
-        print("📦 Server response status: \(httpResponse.statusCode)")
-        
-        guard httpResponse.statusCode == 200 else {
-            throw DownloadError.youtubeFailed
-        }
-        
-        // Parse response to get audio URL
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let success = json["success"] as? Bool,
-              success,
-              let audioUrl = json["audioUrl"] as? String else {
-            throw DownloadError.youtubeFailed
-        }
-        
-        print("✅ Got audio URL from server: \(audioUrl)")
-        
-        // Download the audio file from server URL
-        guard let downloadURL = URL(string: audioUrl) else {
-            throw DownloadError.youtubeFailed
-        }
-        
-        let (audioData, _) = try await URLSession.shared.data(from: downloadURL)
-        
-        // Save to local file
-        try audioData.write(to: URL(fileURLWithPath: outputPath))
-        print("✅ Audio saved to: \(outputPath)")
+        Logger.success("Audio saved to: \(outputPath)", category: "Download")
     }
     
     // MARK: - Match Validation
@@ -411,42 +383,54 @@ class MusicDownloadManager {
             }
         }
         
-        // Check artist name similarity
+        // Check artist name similarity (stricter matching)
         let artistSimilarity = stringSimilarity(
-            parsedArtist.lowercased(),
-            spotifyTrack.primaryArtist.lowercased()
+            normalizeForMatching(parsedArtist),
+            normalizeForMatching(spotifyTrack.primaryArtist)
         )
-        if artistSimilarity > 0.7 {
-            score += 2
+        if artistSimilarity > 0.8 {
+            score += 3
             print("   ✅ Artist similarity: \(Int(artistSimilarity * 100))%")
-        } else if artistSimilarity > 0.4 {
+        } else if artistSimilarity > 0.6 {
             score += 1
             print("   ⚠️ Artist similarity: \(Int(artistSimilarity * 100))%")
+        } else {
+            print("   ❌ Artist mismatch: \(Int(artistSimilarity * 100))%")
         }
         
-        // Check track name similarity
+        // Check track name similarity (stricter matching)
         let trackSimilarity = stringSimilarity(
-            parsedTrack.lowercased(),
-            spotifyTrack.name.lowercased()
+            normalizeForMatching(parsedTrack),
+            normalizeForMatching(spotifyTrack.name)
         )
-        if trackSimilarity > 0.7 {
-            score += 2
+        if trackSimilarity > 0.8 {
+            score += 3
             print("   ✅ Track similarity: \(Int(trackSimilarity * 100))%")
-        } else if trackSimilarity > 0.4 {
+        } else if trackSimilarity > 0.6 {
             score += 1
             print("   ⚠️ Track similarity: \(Int(trackSimilarity * 100))%")
+        } else {
+            print("   ❌ Track mismatch: \(Int(trackSimilarity * 100))%")
         }
         
-        // Determine quality
-        if score >= 5 {
+        // Determine quality with stricter thresholds
+        if score >= 6 {
             return .excellent
-        } else if score >= 3 {
+        } else if score >= 4 {
             return .good
         } else if score >= 2 {
             return .acceptable
         } else {
             return .poor
         }
+    }
+    
+    // Normalize strings for better matching (remove punctuation, extra spaces)
+    private func normalizeForMatching(_ text: String) -> String {
+        return text.lowercased()
+            .replacingOccurrences(of: "[^a-z0-9\\s]", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     private func stringSimilarity(_ s1: String, _ s2: String) -> Double {
@@ -580,9 +564,13 @@ class MusicDownloadManager {
             album: metadata.album,
             duration: Double(metadata.duration) / 1000.0,
             url: audioPath.absoluteString,
+            spotifyTrackId: metadata.spotifyId,
+            artworkURL: nil,
             artworkPath: artworkExists ? artworkPath.path : nil,
             spotifyId: metadata.spotifyId,
-            isrc: metadata.isrc
+            isrc: metadata.isrc,
+            videoId: nil,
+            audioFingerprint: nil
         )
     }
     
@@ -681,5 +669,42 @@ enum DownloadError: LocalizedError {
         case .metadataSaveFailed:
             return "Failed to save metadata"
         }
+    }
+}
+
+// MARK: - Cache Management
+extension MusicDownloadManager {
+    /// Returns the total size (in bytes) of the on-disk music cache.
+    func getCacheSize() -> Int64 {
+        var totalSize: Int64 = 0
+        
+        guard fileManager.fileExists(atPath: musicDirectory.path) else {
+            return 0
+        }
+        
+        if let enumerator = fileManager.enumerator(
+            at: musicDirectory,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for case let fileURL as URL in enumerator {
+                if let resourceValues = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
+                   let fileSize = resourceValues.fileSize {
+                    totalSize += Int64(fileSize)
+                }
+            }
+        }
+        
+        return totalSize
+    }
+    
+    /// Clears all downloaded songs and recreates the music directory.
+    func clearAllCache() throws {
+        guard fileManager.fileExists(atPath: musicDirectory.path) else {
+            return
+        }
+        
+        try fileManager.removeItem(at: musicDirectory)
+        createMusicDirectoryIfNeeded()
     }
 }

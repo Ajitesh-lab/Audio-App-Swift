@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Bucket
+   uuid = "1921BBBB-EC40-48BE-A0FE-4A8CA20DED5D"
+   type = "1"
+   version = "2.0">
+   <Breakpoints>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "D9DB4477-4131-422F-968E-9C00813E2C65"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "MusicAppSwift/PlaylistManager.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "159"
+            endingLineNumber = "159"
+            landmarkName = "loadPlaylistsAsync()"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "D9DB4477-4131-422F-968E-9C00813E2C65 - e1a76f217d9a310d"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(1) suspend resume partial function for MusicAppSwift.PlaylistManager.loadPlaylistsAsync() async -&gt; ()"
+                  moduleName = "MusicAppSwift.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/MusicAppSwift/PlaylistManager.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "159"
+                  endingLineNumber = "159">
+               </Location>
+               <Location
+                  uuid = "D9DB4477-4131-422F-968E-9C00813E2C65 - 1945f6277c5f4a0"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "closure #1 () async -&gt; (Swift.Optional&lt;Foundation.Data&gt;, Swift.Bool) in MusicAppSwift.PlaylistManager.loadPlaylistsAsync() async -&gt; ()"
+                  moduleName = "MusicAppSwift.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/deven/Documents/Ajitesh/Audio/MusicAppSwift/MusicAppSwift/PlaylistManager.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "159"
+                  endingLineNumber = "159">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+   </Breakpoints>
+</Bucket>
