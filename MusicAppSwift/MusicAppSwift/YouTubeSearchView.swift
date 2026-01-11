@@ -10,14 +10,14 @@ import SwiftUI
 struct YouTubeSearchView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var musicPlayer: MusicPlayer
+    @StateObject private var queueManager = DownloadQueueManager.shared
     var isPresented: Binding<Bool>? = nil
     @State private var searchQuery = ""
     @State private var searchResults: [YouTubeResult] = []
     @State private var isSearching = false
-    @State private var downloadingId: String?
-    @State private var downloadProgress: String = ""
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var showQueue = false
     
     var body: some View {
         NavigationStack {
@@ -43,23 +43,43 @@ struct YouTubeSearchView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
-                                ForEach(searchResults) { result in
-                                    YouTubeResultRow(
-                                        result: result,
-                                        isDownloading: downloadingId == result.id,
-                                        progress: downloadingId == result.id ? downloadProgress : "",
-                                        onDownload: {
-                                            downloadSong(result)
-                                        }
-                                    )
-                                }
+                            ForEach(searchResults) { result in
+                                YouTubeResultRow(
+                                    result: result,
+                                    isInQueue: queueManager.queue.contains(where: { $0.videoId == result.videoId }),
+                                    onDownload: {
+                                        addToQueue(result)
+                                    }
+                                )
                             }
-                            .padding()
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .navigationTitle("Search")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showQueue = true }) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "tray.full.fill")
+                                .font(.system(size: 20))
+                            if !queueManager.queue.isEmpty {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 16, height: 16)
+                                    .overlay(
+                                        Text("\(queueManager.queue.filter { $0.status != .completed }.count)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.white)
+                                    )
+                                    .offset(x: 8, y: -8)
+                            }
                         }
                     }
                 }
-            .navigationTitle("Search")
-            .navigationBarTitleDisplayMode(.large)
+            }
             .searchable(text: $searchQuery, prompt: "Search YouTube for songs")
             .onSubmit(of: .search) {
                 performSearch()
@@ -68,6 +88,9 @@ struct YouTubeSearchView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(errorMessage)
+            }
+            .sheet(isPresented: $showQueue) {
+                DownloadQueueView()
             }
         }
     }
@@ -138,73 +161,16 @@ struct YouTubeSearchView: View {
         }
     }
     
-    private func downloadSong(_ result: YouTubeResult) {
-        downloadingId = result.id
-        downloadProgress = "Starting download..."
-        
-        Task {
-            do {
-                // Call the complete Spotify + YouTube pipeline
-                let song = try await MusicDownloadManager.shared.downloadAndProcessSong(
-                    youtubeURL: "https://youtube.com/watch?v=\(result.videoId)",
-                    youtubeTitle: result.title,
-                    youtubeDuration: parseDuration(result.duration),
-                    progressCallback: { progress in
-                        DispatchQueue.main.async {
-                            downloadProgress = progress
-                            print("📊 Progress: \(progress)")
-                        }
-                    }
-                )
-                
-                // Add song to player with Spotify metadata
-                DispatchQueue.main.async {
-                    print("✅ Song created with:")
-                    print("   Title: \(song.title)")
-                    print("   Artist: \(song.artist)")
-                    print("   Artwork Path: \(song.artworkPath ?? "nil")")
-                    if let path = song.artworkPath {
-                        print("   Artwork exists: \(FileManager.default.fileExists(atPath: path))")
-                    }
-                    musicPlayer.addSong(song)
-                    downloadingId = nil
-                    downloadProgress = ""
-                    print("✅ Song added to player")
-                }
-                
-            } catch {
-                print("❌ Download failed: \(error)")
-                DispatchQueue.main.async {
-                    downloadingId = nil
-                    downloadProgress = "Download failed"
-                }
-            }
-        }
-    }
-    
-    private func parseDuration(_ durationString: String?) -> Double? {
-        guard let duration = durationString else { return nil }
-        
-        // Parse "3:45" format to seconds
-        let components = duration.split(separator: ":")
-        if components.count == 2,
-           let minutes = Double(components[0]),
-           let seconds = Double(components[1]) {
-            return (minutes * 60) + seconds
-        } else if components.count == 3,
-                  let hours = Double(components[0]),
-                  let minutes = Double(components[1]),
-                  let seconds = Double(components[2]) {
-            return (hours * 3600) + (minutes * 60) + seconds
-        }
-        return nil
+    private func addToQueue(_ result: YouTubeResult) {
+        // Add to queue with all search results as alternatives
+        queueManager.addToQueue(youtubeResult: result, searchResults: searchResults)
+        print("➕ Added to queue: \(result.title)")
     }
 }
 
 struct YouTubeResultRow: View {
     let result: YouTubeResult
-    let isDownloading: Bool
-    let progress: String
+    let isInQueue: Bool
     let onDownload: () -> Void
     
     var body: some View {
@@ -239,14 +205,14 @@ struct YouTubeResultRow: View {
                 
                 Spacer()
                 
-                if isDownloading {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        ProgressView()
-                        if !progress.isEmpty {
-                            Text(progress)
-                                .font(.system(size: 10))
-                                .foregroundColor(.black.opacity(0.6))
-                        }
+                if isInQueue {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.green)
+                        Text("Queued")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.green)
                     }
                     .padding(.trailing, 8)
                 } else {
