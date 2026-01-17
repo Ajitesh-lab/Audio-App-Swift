@@ -60,27 +60,26 @@ struct YouTubeSearchView: View {
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button(action: { showQueue = true }) {
-                        ZStack(alignment: .topTrailing) {
+                        ZStack {
                             Image(systemName: "tray.full.fill")
                                 .font(.system(size: 20))
+                                .padding(8)
                             if !queueManager.queue.isEmpty {
-                                Circle()
-                                    .fill(Color.red)
-                                    .frame(width: 16, height: 16)
-                                    .overlay(
-                                        Text("\(queueManager.queue.filter { $0.status != .completed }.count)")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(.white)
-                                    )
-                                    .offset(x: 8, y: -8)
+                                Text("\(queueManager.queue.filter { $0.status != .completed }.count)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(4)
+                                    .background(Circle().fill(Color.red))
+                                    .offset(x: 10, y: -10)
                             }
                         }
                     }
                 }
             }
             .searchable(text: $searchQuery, prompt: "Search YouTube for songs")
+            .toolbarRole(.editor)
             .onSubmit(of: .search) {
                 performSearch()
             }

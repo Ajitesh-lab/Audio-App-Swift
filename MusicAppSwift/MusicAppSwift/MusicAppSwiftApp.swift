@@ -13,6 +13,7 @@ struct MusicAppSwiftApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var musicPlayer = MusicPlayer.shared
     @StateObject private var playlistManager = PlaylistManager()
+    @StateObject private var authService = AuthService()
     
     init() {
         // Configure audio session on app launch for lock screen support
@@ -21,9 +22,17 @@ struct MusicAppSwiftApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(musicPlayer)
-                .environmentObject(playlistManager)
+            Group {
+                if authService.isAuthenticated {
+                    ContentView()
+                        .environmentObject(musicPlayer)
+                        .environmentObject(playlistManager)
+                        .environmentObject(authService)
+                } else {
+                    LoginView()
+                        .environmentObject(authService)
+                }
+            }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             handleScenePhaseChange(from: oldPhase, to: newPhase)

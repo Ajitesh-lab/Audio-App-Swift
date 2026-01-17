@@ -1,7 +1,9 @@
 node_modules
-npm-debug.log
-downloads/*
-alignments/*
+downloads
+alignments
+MusicAppSwift
+.git
 .env
-*.pyc
-__pycache__
+users.db
+*.log
+*.js.map

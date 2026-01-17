@@ -18,6 +18,7 @@ import {
   alignLyricsToWhisper,
   describeAudio
 } from './utils/lyrics.js';
+import authRouter, { authenticateToken, optionalAuth, setupGoogleOAuth } from './auth.js';
 
 dotenv.config();
 
@@ -30,9 +31,19 @@ const PORT = process.env.PORT || 3001;
 // CORS configuration - allow all origins for private use
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
+
+// Parse JSON bodies
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Setup Google OAuth (if configured)
+setupGoogleOAuth(app);
+
+// Mount auth routes
+app.use('/api/auth', authRouter);
 
 // RapidAPI configuration
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '5a2bd678camsh6ae73794f0bd56fp1c7f49jsn1e92cc36ecd3';

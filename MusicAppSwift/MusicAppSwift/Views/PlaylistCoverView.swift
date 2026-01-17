@@ -55,8 +55,19 @@ struct PlaylistCoverView: View {
             normalizedPath = cover
         }
         
-        guard FileManager.default.fileExists(atPath: normalizedPath) else { return nil }
-        return UIImage(contentsOfFile: normalizedPath)
+        // Resolve relative paths to documents directory
+        let fullPath: String
+        if normalizedPath.hasPrefix("/") {
+            // Already an absolute path
+            fullPath = normalizedPath
+        } else {
+            // Relative path - resolve to documents directory
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            fullPath = documentsPath.appendingPathComponent(normalizedPath).path
+        }
+        
+        guard FileManager.default.fileExists(atPath: fullPath) else { return nil }
+        return UIImage(contentsOfFile: fullPath)
     }
     
     private var remoteCoverURL: URL? {

@@ -26,7 +26,7 @@ enum DownloadAPI {
 class DownloadFallbackService {
     static let shared = DownloadFallbackService()
     
-    private let primaryServerURL = "http://192.168.1.133:3001"
+    private let primaryServerURL = "https://audio-rough-water-3069.fly.dev"
     
     // Backup API endpoints
     private let invidiousInstances = [

@@ -10,6 +10,8 @@ import SwiftUI
 struct ProfileView: View {
     @ObservedObject var musicPlayer: MusicPlayer
     @ObservedObject private var importService = SpotifyImportService.shared
+    @EnvironmentObject var authService: AuthService
+    @State private var showingLogoutAlert = false
     
     var body: some View {
         NavigationStack {
@@ -37,9 +39,16 @@ struct ProfileView: View {
                                         .foregroundColor(.gray)
                                 )
                             
-                            Text("Music Lover")
+                            Text(authService.currentUser?.name ?? authService.currentUser?.email ?? "Music Lover")
                                 .font(.title)
                                 .fontWeight(.bold)
+                                .foregroundColor(.black)
+                            
+                            if let email = authService.currentUser?.email {
+                                Text(email)
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                            }
                         }
                         .padding(.top, 40)
                         
@@ -57,8 +66,6 @@ struct ProfileView: View {
                                 StatRow(icon: "heart.fill", title: "Liked Songs", value: "\(musicPlayer.likedSongs.count)")
                                 Divider()
                                 StatRow(icon: "music.note.list", title: "Playlists", value: "\(musicPlayer.playlists.count)")
-                                Divider()
-                                StatRow(icon: "clock.fill", title: "Recently Played", value: "\(musicPlayer.recentSongs.count)")
                             }
                             .padding()
                         }
@@ -80,7 +87,7 @@ struct ProfileView: View {
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text("Clear Cache")
                                                 .fontWeight(.semibold)
-                                                .foregroundColor(.primary)
+                                                .foregroundColor(.black)
                                             Text("Removes all downloaded songs and metadata")
                                                 .font(.caption)
                                                 .foregroundColor(.gray)
@@ -96,16 +103,49 @@ struct ProfileView: View {
                                     }
                                     .padding(.vertical, 8)
                                 }
+                                
+                                Divider()
+                                    .padding(.vertical, 8)
+                                
+                                // Logout Button
+                                Button(action: {
+                                    showingLogoutAlert = true
+                                }) {
+                                    HStack {
+                                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                                            .font(.body)
+                                            .foregroundColor(.red)
+                                            .frame(width: 30)
+                                        
+                                        Text("Logout")
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.black)
+                                        
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 8)
+                                }
                             }
                             .padding()
                         }
                         .padding(.horizontal)
+                        .alert("Logout", isPresented: $showingLogoutAlert) {
+                            Button("Cancel", role: .cancel) { }
+                            Button("Logout", role: .destructive) {
+                                Task {
+                                    await authService.logout()
+                                }
+                            }
+                        } message: {
+                            Text("Are you sure you want to logout?")
+                        }
                         
                         // About
                         GlassCard {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("About")
                                     .font(.headline)
+                                    .foregroundColor(.black)
                                 Text("Music App v1.0")
                                     .foregroundColor(.gray)
                                 Text("Built with SwiftUI")
@@ -129,11 +169,26 @@ struct ProfileView: View {
     
     private func clearCache() {
         do {
+            // 1. Delete all downloaded files from disk
             try MusicDownloadManager.shared.clearAllCache()
+            
+            // 2. Clear all in-memory data
             musicPlayer.songs.removeAll()
-            for i in musicPlayer.playlists.indices {
-                musicPlayer.playlists[i].songs.removeAll()
-            }
+            musicPlayer.playlists.removeAll()
+            musicPlayer.likedSongs.removeAll()
+            musicPlayer.recentSongs.removeAll()
+            
+            // 3. Clear the player bar
+            musicPlayer.currentSong = nil
+            musicPlayer.isPlaying = false
+            
+            // 4. Clear all UserDefaults storage
+            UserDefaults.standard.removeObject(forKey: "songs")
+            UserDefaults.standard.removeObject(forKey: "playlists")
+            UserDefaults.standard.removeObject(forKey: "likedSongs")
+            UserDefaults.standard.removeObject(forKey: "recentSongs")
+            
+            print("✅ Cache completely cleared - all songs deleted")
         } catch {
             print("❌ Error clearing cache: \(error)")
         }
@@ -166,7 +221,7 @@ struct StatRow: View {
             
             Text(value)
                 .fontWeight(.semibold)
-                .foregroundColor(.primary)
+                .foregroundColor(.black)
         }
     }
 }

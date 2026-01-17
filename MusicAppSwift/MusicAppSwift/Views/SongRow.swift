@@ -52,10 +52,53 @@ struct SongRow: View {
                         .foregroundColor(.blue)
                         .symbolEffect(.variableColor.iterative.reversing)
                 } else {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 18))
-                        .foregroundColor(.black.opacity(0.6))
-                        .rotationEffect(.degrees(90))
+                    Menu {
+                        Button(action: {
+                            musicPlayer.play(song)
+                        }) {
+                            Label("Play Now", systemImage: "play.fill")
+                        }
+                        
+                        Button(action: {
+                            musicPlayer.playNext(song)
+                        }) {
+                            Label("Play Next", systemImage: "text.insert")
+                        }
+                        
+                        Button(action: {
+                            musicPlayer.addToQueue(song)
+                        }) {
+                            Label("Add to Queue", systemImage: "text.append")
+                        }
+                        
+                        Divider()
+                        
+                        Button(action: {
+                            musicPlayer.toggleLike(song)
+                        }) {
+                            Label(
+                                musicPlayer.likedSongs.contains(song.id) ? "Unlike" : "Like",
+                                systemImage: musicPlayer.likedSongs.contains(song.id) ? "heart.fill" : "heart"
+                            )
+                        }
+                        
+                        Divider()
+                        
+                        Button(role: .destructive) {
+                            songToDelete = song
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 18))
+                            .foregroundColor(.black.opacity(0.6))
+                            .rotationEffect(.degrees(90))
+                            .frame(width: 40, height: 40)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             .frame(height: 64)
@@ -64,6 +107,26 @@ struct SongRow: View {
         .buttonStyle(PlainButtonStyle())
         .contextMenu {
             Button(action: {
+                musicPlayer.play(song)
+            }) {
+                Label("Play Now", systemImage: "play.fill")
+            }
+            
+            Button(action: {
+                musicPlayer.playNext(song)
+            }) {
+                Label("Play Next", systemImage: "text.insert")
+            }
+            
+            Button(action: {
+                musicPlayer.addToQueue(song)
+            }) {
+                Label("Add to Queue", systemImage: "text.append")
+            }
+            
+            Divider()
+            
+            Button(action: {
                 musicPlayer.toggleLike(song)
             }) {
                 Label(
@@ -71,6 +134,8 @@ struct SongRow: View {
                     systemImage: musicPlayer.likedSongs.contains(song.id) ? "heart.fill" : "heart"
                 )
             }
+            
+            Divider()
             
             Button(role: .destructive) {
                 songToDelete = song

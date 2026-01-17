@@ -266,7 +266,7 @@ class SpotifyImportService: ObservableObject {
     private func exchangeCodeForToken(code: String) async throws -> String {
         // Call your backend to exchange code for token
         // Your backend should handle client_secret securely
-        let serverURL = "http://192.168.1.133:3001/api/spotify/token"
+        let serverURL = "https://audio-rough-water-3069.fly.dev/api/spotify/token"
         
         print("🔄 Exchanging code for token...")
         
@@ -765,7 +765,7 @@ class SpotifyImportService: ObservableObject {
     // MARK: - YouTube Search & Download Integration
     
     private func searchYouTube(query: String) async throws -> String? {
-        let serverURL = "http://192.168.1.133:3001/api/search"
+        let serverURL = "https://audio-rough-water-3069.fly.dev/api/search"
         
         guard var components = URLComponents(string: serverURL) else {
             throw NSError(domain: "SpotifyImport", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid server URL"])

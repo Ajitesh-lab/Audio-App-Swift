@@ -148,7 +148,7 @@ struct GlassCard<Content: View>: View {
     var body: some View {
         content
             .background(
-                RoundedRectangle(cornerRadius: cornerRadius)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(Color.white.opacity(0.7))
                     .shadow(
                         color: DesignSystem.Shadow.medium.color,
@@ -157,7 +157,7 @@ struct GlassCard<Content: View>: View {
                         y: DesignSystem.Shadow.medium.y
                     )
             )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 

@@ -61,6 +61,7 @@ struct CreatePlaylistView: View {
                             TextField("My Awesome Playlist", text: $playlistName)
                                 .textFieldStyle(PlainTextFieldStyle())
                                 .font(.title3)
+                                .foregroundColor(.black)
                         }
                         .padding()
                     }

@@ -34,8 +34,9 @@ class MusicPlayer: NSObject, ObservableObject {
     @Published var likedSongs: Set<String> = []
     @Published var recentSongs: [String] = []
     
-    // Playlist management (queue feature removed for cleaner UX)
+    // Playlist management
     @Published var currentPlaylist: Playlist?
+    @Published var queuedSongs: [Song] = []
     
     // Slider drag state - prevents time observer conflicts
     @Published var isDraggingSlider = false
@@ -279,12 +280,18 @@ class MusicPlayer: NSObject, ObservableObject {
     
     // MARK: - Playback Control
     func play(_ song: Song) {
-        currentSong = song
-        
-        // Reset slider state to prevent glitches
+        // Reset slider state FIRST to prevent glitches
         isDraggingSlider = false
         draggedTime = 0
         currentTime = 0
+        
+        // Stop current player if any
+        if let currentPlayer = player {
+            currentPlayer.pause()
+            currentPlayer.replaceCurrentItem(with: nil)
+        }
+        
+        currentSong = song
         
         // CRITICAL: Reactivate and set category before each play (lock screen requires .playback)
         activateAudioSessionForPlayback()
@@ -393,9 +400,26 @@ class MusicPlayer: NSObject, ObservableObject {
         isPlaying = true
         updateNowPlayingInfo()
     }
+
+    func playNext(_ song: Song) {
+        queuedSongs.removeAll { $0.id == song.id }
+        queuedSongs.insert(song, at: 0)
+        preloadNextSong()
+    }
+
+    func addToQueue(_ song: Song) {
+        guard !queuedSongs.contains(where: { $0.id == song.id }) else { return }
+        queuedSongs.append(song)
+        if queuedSongs.count == 1 {
+            preloadNextSong()
+        }
+    }
     
     func skipForward() {
         guard let nextSong = getNextSong() else { return }
+        if queuedSongs.first?.id == nextSong.id {
+            queuedSongs.removeFirst()
+        }
         
         // CRITICAL: Remove time observer first to prevent glitches
         if let observer = timeObserver {
@@ -467,8 +491,11 @@ class MusicPlayer: NSObject, ObservableObject {
         // CRITICAL: Stop automatic updates during seek to prevent glitching
         allowAutomaticProgressUpdates = false
         
+        // Track if we set the flag (so we can unset it)
+        let wasNotDragging = !isDraggingSlider
+        
         // Set flag to block time observer during seek
-        if !isDraggingSlider {
+        if wasNotDragging {
             isDraggingSlider = true
         }
         
@@ -485,8 +512,10 @@ class MusicPlayer: NSObject, ObservableObject {
             // Resume automatic updates
             self.allowAutomaticProgressUpdates = true
             
-            // Allow time observer to resume if not manually dragging
-            // (Remote seeks will reset this flag with a delay)
+            // Clear the dragging flag if we set it (not from manual drag)
+            if wasNotDragging {
+                self.isDraggingSlider = false
+            }
         }
     }
     
@@ -508,6 +537,7 @@ class MusicPlayer: NSObject, ObservableObject {
     func stopDragging(seekTo time: Double) {
         print("🎚️ Slider drag ended - seeking to \(time)s")
         isDraggingSlider = false
+        draggedTime = 0 // Reset dragged time
         seek(to: time)
     }
     
@@ -547,9 +577,11 @@ class MusicPlayer: NSObject, ObservableObject {
         case .all:
             skipForwardGapless()
         case .off:
-            if let current = currentSong,
-               let currentIndex = songs.firstIndex(where: { $0.id == current.id }),
-               currentIndex < songs.count - 1 {
+            if !queuedSongs.isEmpty {
+                skipForwardGapless()
+            } else if let current = currentSong,
+                      let currentIndex = songs.firstIndex(where: { $0.id == current.id }),
+                      currentIndex < songs.count - 1 {
                 skipForwardGapless()
             } else {
                 isPlaying = false
@@ -582,6 +614,9 @@ class MusicPlayer: NSObject, ObservableObject {
     
     private func skipForwardGapless() {
         guard let nextSong = getNextSong() else { return }
+        if queuedSongs.first?.id == nextSong.id {
+            queuedSongs.removeFirst()
+        }
         
         // Use preloaded item if available
         if let preloadedItem = nextPlayerItem {
@@ -605,6 +640,9 @@ class MusicPlayer: NSObject, ObservableObject {
     }
     
     private func getNextSong() -> Song? {
+        if let queued = queuedSongs.first {
+            return queued
+        }
         if let playlist = currentPlaylist {
             let playlistSongs = playlist.songs.compactMap { songId in
                 songs.first(where: { $0.id == songId })
@@ -684,8 +722,8 @@ class MusicPlayer: NSObject, ObservableObject {
         ) { [weak self] time in
             guard let self = self else { return }
             
-            // Don't update if user is dragging slider
-            guard !self.isDraggingSlider else { return }
+            // Don't update if user is dragging slider OR if playback is paused
+            guard !self.isDraggingSlider && self.isPlaying else { return }
             
             let newTime = time.seconds
             
@@ -884,6 +922,13 @@ class MusicPlayer: NSObject, ObservableObject {
     func removeSongFromPlaylist(songId: String, playlistId: String) {
         if let index = playlists.firstIndex(where: { $0.id == playlistId }) {
             playlists[index].songs.removeAll { $0 == songId }
+            saveData()
+        }
+    }
+    
+    func updatePlaylistCover(playlistId: String, coverImageURL: String?) {
+        if let index = playlists.firstIndex(where: { $0.id == playlistId }) {
+            playlists[index].coverImageURL = coverImageURL
             saveData()
         }
     }

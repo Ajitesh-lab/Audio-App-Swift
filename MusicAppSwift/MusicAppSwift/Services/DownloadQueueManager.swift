@@ -11,10 +11,10 @@ import Combine
 // MARK: - Download Queue Item
 struct DownloadQueueItem: Identifiable, Codable {
     let id: String
-    let youtubeURL: String
-    let videoId: String
-    let title: String
-    let channel: String?
+    var youtubeURL: String
+    var videoId: String
+    var title: String
+    var channel: String?
     let duration: String? // Original duration string from YouTube
     let durationSeconds: Double? // Parsed duration for matching
     var status: DownloadStatus
@@ -76,7 +76,7 @@ class DownloadQueueManager: ObservableObject {
     @Published var isProcessing = false
     
     private let maxRetries = 3
-    private let durationMatchTolerance: Double = 30.0 // +/- 30 seconds acceptable
+    private let durationMatchTolerance: Double = 15.0 // +/- 15 seconds acceptable
     private var currentDownloadTask: Task<Void, Never>?
     private let queueFilePath: URL
     
@@ -122,8 +122,28 @@ class DownloadQueueManager: ObservableObject {
     
     // MARK: - Queue Management
     
+    private func isLiveConcertVersion(_ title: String) -> Bool {
+        let lowerTitle = title.lowercased()
+        // Look for actual live concert indicators, not just the word "live"
+        let liveIndicators = [
+            "live at",
+            "live in",
+            "live from",
+            "live on",
+            "live performance",
+            "live session",
+            "concert",
+            "tour"
+        ]
+        return liveIndicators.contains { lowerTitle.contains($0) }
+    }
+    
     func addToQueue(youtubeResult: YouTubeResult, searchResults: [YouTubeResult]) {
-        let item = DownloadQueueItem(youtubeResult: youtubeResult, searchResults: searchResults)
+        // Filter out ACTUAL live concert versions from alternatives (not just songs with "live" in name)
+        let userWantsLive = isLiveConcertVersion(youtubeResult.title)
+        let filteredSearchResults = userWantsLive ? searchResults : searchResults.filter { !isLiveConcertVersion($0.title) }
+        
+        let item = DownloadQueueItem(youtubeResult: youtubeResult, searchResults: filteredSearchResults)
         
         DispatchQueue.main.async {
             self.queue.append(item)
@@ -297,7 +317,17 @@ class DownloadQueueManager: ObservableObject {
     
     private func findNextBestAlternative(for item: DownloadQueueItem) -> YouTubeResult? {
         // Skip already tried alternatives
-        let remaining = Array(item.alternativeResults.dropFirst(item.currentAlternativeIndex + 1))
+        var remaining = Array(item.alternativeResults.dropFirst(item.currentAlternativeIndex + 1))
+        
+        // Filter out ACTUAL live concert versions unless user wants them
+        let searchedForLive = isLiveConcertVersion(item.title)
+        
+        if !searchedForLive {
+            remaining = remaining.filter { !isLiveConcertVersion($0.title) }
+            if remaining.count < item.alternativeResults.count - item.currentAlternativeIndex - 1 {
+                print("🚫 Filtered out live concert versions")
+            }
+        }
         
         guard !remaining.isEmpty else { return nil }
         guard let targetDuration = item.durationSeconds else {
@@ -316,18 +346,27 @@ class DownloadQueueManager: ObservableObject {
             return diff1 < diff2
         }
         
-        // Return closest match if within tolerance
+        // Progressive tolerance: start at 15s, then 20s, 25s, 30s, etc. until match found
         if let best = sorted.first,
            let bestDuration = DownloadQueueItem.parseDuration(best.duration) {
             let difference = abs(bestDuration - targetDuration)
-            if difference <= durationMatchTolerance {
-                print("🎯 Found alternative with duration \(best.duration ?? "?") (target: \(item.duration ?? "?"))")
-                return best
+            
+            // Try progressively larger tolerances
+            let tolerances: [Double] = [15, 20, 25, 30, 40, 50, 60, 90, 120]
+            for tolerance in tolerances {
+                if difference <= tolerance {
+                    print("🎯 Found alternative with duration \(best.duration ?? "?") (target: \(item.duration ?? "?"), tolerance: \(Int(tolerance))s)")
+                    return best
+                }
             }
+            
+            // If even 120s tolerance doesn't work, still use it (better than nothing)
+            print("⚠️ Using \(best.duration ?? "?") despite \(Int(difference))s difference from target \(item.duration ?? "?")")
+            return best
         }
         
-        // If no good match, still try the next one
-        return remaining.first
+        // No alternatives found at all
+        return nil
     }
     
     private func markAsFailed(index: Int, reason: String) async {
